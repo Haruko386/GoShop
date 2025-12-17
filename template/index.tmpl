@@ -15,7 +15,7 @@
                     <div class="logo">CM</div>
                     <div>
                         <h1>ColdMart</h1>
-                        <small>黑白灰 · 简洁商城模板</small>
+                        <small>Mall</small>
                     </div>
                 </a>
 
@@ -24,29 +24,19 @@
                     <input id="q" placeholder="搜索商品 / SKU / 关键字…" autocomplete="off"/>
                 </div>
 
-                <button class="pill" id="cartBtn" aria-label="打开购物车">
-                    购物车 <span class="badge" id="cartCount">0</span>
-                </button>
-                <button class="pill" id="loginBtn" title="仅展示UI，接后端时替换">登录</button>
+                <div class="row" id="topActions">
+                    <button class="pill" id="cartBtn" aria-label="打开购物车">
+                        购物车 <span class="badge" id="cartCount">0</span>
+                    </button>
+                    <a class="pill" href="/orders">订单</a>
+                    <button class="pill" id="loginBtn" title="立刻登录" onclick="window.location.href='/login'">登录</button>
+                </div>
             </div>
         </div>
     </header>
 
     <main>
         <div class="wrap">
-            <section class="hero">
-                <div class="heroInner">
-                    <div>
-                        <h2>极简商城前端 · 直接对接 gin + gorm</h2>
-                        <p>支持搜索、分类筛选、价格区间、排序、商品详情、购物车与结算 UI。你只需要把数据源替换为后端接口。</p>
-                    </div>
-                    <div class="heroActions">
-                        <button class="btn solid" id="mockBtn">使用 Mock 数据</button>
-                        <button class="btn" id="apiBtn">尝试拉取 /api/products</button>
-                    </div>
-                </div>
-            </section>
-
             <section class="content">
                 <!-- sidebar -->
                 <aside class="sidebar panel">
@@ -164,6 +154,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="../static/js/index.js"></script>
+<script type="module" src="/static/js/index.js"></script>
 </body>
 </html>

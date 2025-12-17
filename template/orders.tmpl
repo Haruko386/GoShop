@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>ColdMart · 我的订单</title>
+    <link rel="stylesheet" href="/static/css/index.css">
+</head>
+<body>
+<header class="topbar">
+    <div class="wrap">
+        <div class="row" style="justify-content:space-between;">
+            <a class="brand" href="/">
+                <div class="logo">CM</div>
+                <div>
+                    <h1>ColdMart</h1>
+                    <small>我的订单</small>
+                </div>
+            </a>
+
+            <div class="row">
+                <a class="pill" href="/">返回首页</a>
+                <button class="pill" id="logoutBtn">退出</button>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="wrap" style="padding-top:18px; padding-bottom:30px;">
+    <section class="panel">
+        <div class="panelHeader">
+            <h3>订单列表</h3>
+            <div class="muted small" id="statusText">—</div>
+        </div>
+
+        <div class="panelBody">
+            <div class="row" style="gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+                <button class="btn" id="refreshBtn">刷新</button>
+                <div class="muted small">提示：下单后状态为 pending，可支付或取消</div>
+            </div>
+
+            <div id="orderList"></div>
+            <div class="muted small" id="empty" style="display:none; padding:10px 2px;">
+                暂无订单。去首页结算下单试试。
+            </div>
+        </div>
+    </section>
+
+    <section class="panel" style="margin-top:14px;">
+        <div class="panelHeader">
+            <h3>订单详情</h3>
+            <div class="muted small" id="detailHint">选择一笔订单查看</div>
+        </div>
+        <div class="panelBody" id="detailBox">
+            <div class="muted small">—</div>
+        </div>
+    </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script type="module" src="/static/js/orders.js"></script>
+</body>
+</html>

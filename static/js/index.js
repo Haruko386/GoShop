@@ -1,381 +1,297 @@
-/***********************
- * 你接后端时改这里
- ***********************/
-const API_BASE = ""; // 例如: "http://localhost:8080"
-const ENDPOINT_PRODUCTS = "/api/products"; // GET，返回数组
-// 建议商品结构：
-// { id, name, price, category, sku, stock, desc, createdAt }
+import { apiFetch, getToken, clearToken } from "./api.js";
 
-/***********************
- * Mock 数据（可删）
- ***********************/
-const MOCK_PRODUCTS = [
-    {id:1, name:"冷感机械键盘 87键", price:399, category:"数码", sku:"KB-87-COLD", stock:32, desc:"黑白灰配色，PBT键帽，静音轴体，适合办公与游戏。", createdAt:"2025-10-02"},
-    {id:2, name:"极简无线鼠标", price:149, category:"数码", sku:"MS-SLIM-01", stock:58, desc:"轻量化，静音微动，Type-C 充电，冷灰涂层。", createdAt:"2025-11-12"},
-    {id:3, name:"无香氛洗衣凝珠（48颗）", price:59.9, category:"日用", sku:"DAILY-POD-48", stock:120, desc:"低刺激配方，适合敏感肌，清洁力稳定。", createdAt:"2025-09-18"},
-    {id:4, name:"不锈钢保温杯 450ml", price:89, category:"日用", sku:"CUP-450-SS", stock:76, desc:"双层真空，12小时保温，冷灰磨砂杯身。", createdAt:"2025-08-22"},
-    {id:5, name:"基础款卫衣（冷灰）", price:169, category:"服饰", sku:"HOODIE-GRAY", stock:44, desc:"宽松版型，毛圈内里，简洁无印风格。", createdAt:"2025-12-01"},
-    {id:6, name:"直筒工装裤（黑）", price:219, category:"服饰", sku:"PANTS-BLK-01", stock:27, desc:"耐磨面料，多口袋，日常通勤都能搭。", createdAt:"2025-11-25"},
-    {id:7, name:"冷萃咖啡豆 500g", price:128, category:"食品", sku:"BEAN-500-CB", stock:65, desc:"中深烘焙，巧克力与坚果风味，适合冷萃。", createdAt:"2025-10-19"},
-    {id:8, name:"即食燕麦杯（6杯装）", price:72, category:"食品", sku:"OAT-CUP-6", stock:90, desc:"低糖配方，早餐快速搞定，口感细腻。", createdAt:"2025-09-30"},
-    {id:9, name:"桌面氛围灯（冷白光）", price:119, category:"家居", sku:"LAMP-CW-01", stock:41, desc:"三档亮度，触控开关，冷白光提升专注。", createdAt:"2025-10-28"},
-    {id:10, name:"极简床品四件套（灰）", price:299, category:"家居", sku:"BED-GR-SET", stock:19, desc:"亲肤面料，低饱和灰，适配冷色卧室。", createdAt:"2025-11-06"},
-];
+const $ = (s) => document.querySelector(s);
 
-/***********************
- * 状态
- ***********************/
-let allProducts = [...MOCK_PRODUCTS];
-let filtered = [];
-let activeCategory = "全部";
-
-const cart = new Map(); // id -> {product, qty}
-
-/***********************
- * DOM
- ***********************/
-const $ = (s)=>document.querySelector(s);
+const statusText = $("#statusText");
 const grid = $("#grid");
 const empty = $("#empty");
-const statusText = $("#statusText");
-const resultTip = $("#resultTip");
 
-const catChips = $("#catChips");
-const q = $("#q");
-const minPrice = $("#minPrice");
-const maxPrice = $("#maxPrice");
-const sort = $("#sort");
-
-const overlay = $("#overlay");
-const drawer = $("#drawer");
 const cartBtn = $("#cartBtn");
 const cartCount = $("#cartCount");
+const overlay = $("#overlay");
+const drawer = $("#drawer");
+const closeCart = $("#closeCart");
 const cartList = $("#cartList");
 const cartTotal = $("#cartTotal");
+const checkoutBtn = $("#checkoutBtn");
+const clearCartBtn = $("#clearCart");
 
-const modalWrap = $("#modalWrap");
-const modalTitle = $("#modalTitle");
-const modalCat = $("#modalCat");
-const modalSku = $("#modalSku");
-const modalStock = $("#modalStock");
-const modalPrice = $("#modalPrice");
-const modalDesc = $("#modalDesc");
-const modalAdd = $("#modalAdd");
-const modalBuy = $("#modalBuy");
-
+const loginBtn = $("#loginBtn");
 const toast = $("#toast");
 
-let currentModalProduct = null;
+let products = [];
+let cartItems = []; // 后端 cart list
 
-/***********************
- * 工具函数
- ***********************/
-const money = (n)=>`¥ ${(Number(n)||0).toFixed(2)}`;
-const sleep = (ms)=>new Promise(r=>setTimeout(r, ms));
-function showToast(msg){
+function showToast(msg) {
     toast.textContent = msg;
     toast.classList.add("show");
     clearTimeout(showToast.t);
-    showToast.t = setTimeout(()=>toast.classList.remove("show"), 1800);
+    showToast.t = setTimeout(() => toast.classList.remove("show"), 1800);
 }
 
-function openCart(){
+function money(n) {
+    return `¥ ${(Number(n) || 0).toFixed(2)}`;
+}
+
+function openCart() {
     overlay.classList.add("show");
     drawer.classList.add("show");
-    renderCart();
 }
-function closeCart(){
+function hideCart() {
     overlay.classList.remove("show");
     drawer.classList.remove("show");
 }
 
-function openModal(p){
-    currentModalProduct = p;
-    modalTitle.textContent = p.name;
-    modalCat.textContent = p.category || "—";
-    modalSku.textContent = `SKU: ${p.sku || "-"}`;
-    modalStock.textContent = `库存: ${p.stock ?? "-"}`;
-    modalPrice.textContent = money(p.price);
-    modalDesc.textContent = p.desc || "暂无描述。";
-    modalWrap.classList.add("show");
-}
-function closeModal(){
-    modalWrap.classList.remove("show");
-    currentModalProduct = null;
+// -------------------- 登录态显示 --------------------
+async function refreshAuthUI() {
+    const token = getToken();
+    if (!token) {
+        loginBtn.textContent = "登录";
+        loginBtn.onclick = () => (location.href = "/login");
+        return;
+    }
+
+    try {
+        const me = await apiFetch("/api/me");
+        if (me.id === 1) {
+            const a = document.createElement("a");
+            a.className = "pill";
+            a.href = "/admin";
+            a.textContent = "发布商品";
+            document.getElementById("topActions").prepend(a);
+        }
+        loginBtn.textContent = `退出（${me.username}）`;
+        loginBtn.onclick = () => {
+            clearToken();
+            showToast("已退出");
+            setTimeout(() => location.reload(), 300);
+        };
+    } catch {
+        // apiFetch 已处理 401
+    }
 }
 
-/***********************
- * 渲染
- ***********************/
-function renderCategories(){
-    const cats = ["全部", ...Array.from(new Set(allProducts.map(p=>p.category).filter(Boolean)))];
-    catChips.innerHTML = cats.map(c=>`
-      <button class="chip ${c===activeCategory?'active':''}" data-cat="${c}">${c}</button>
-    `).join("");
-}
-
-function renderGrid(list){
-    grid.innerHTML = list.map(p=>`
-      <article class="card" data-id="${p.id}">
-        <div class="thumb"></div>
-        <div class="cardBody">
-          <h4 class="title">${escapeHtml(p.name)}</h4>
-          <div class="meta">
-            <span class="tag">${escapeHtml(p.category || "未分类")}</span>
-            <span class="tag">SKU ${escapeHtml(p.sku || "-")}</span>
-            <span class="tag">库存 ${p.stock ?? "-"}</span>
+// -------------------- 商品 --------------------
+function renderProducts(list) {
+    grid.innerHTML = list
+        .map(
+            (p) => `
+    <article class="card" data-id="${p.ID || p.id}">
+      <div class="thumb"></div>
+      <div class="cardBody">
+        <h4 class="title">${escapeHtml(p.name)}</h4>
+        <div class="meta">
+          <span class="tag">${escapeHtml(p.category || "未分类")}</span>
+          <span class="tag">库存 ${p.inventory ?? "-"}</span>
+        </div>
+        <div class="priceRow">
+          <div>
+            <div class="price">${money(p.price)}</div>
           </div>
-          <div class="priceRow">
-            <div>
-              <div class="price">${money(p.price)}</div>
-              <div class="muted small">上架 ${escapeHtml((p.createdAt||"—").slice(0,10))}</div>
-            </div>
-            <div class="cardActions">
-              <button class="iconBtn" data-action="detail">详情</button>
-              <button class="iconBtn solid" data-action="add">加入</button>
-            </div>
+          <div class="cardActions">
+            <button class="iconBtn solid" data-action="add">加入</button>
           </div>
         </div>
-      </article>
-    `).join("");
+      </div>
+    </article>
+  `
+        )
+        .join("");
 
     empty.style.display = list.length ? "none" : "block";
-    resultTip.textContent = `共 ${list.length} 件商品`;
 }
 
-function renderCart(){
-    const items = Array.from(cart.values());
-    cartCount.textContent = items.reduce((s,it)=>s+it.qty,0);
+async function loadProducts() {
+    statusText.textContent = "加载商品…";
+    try {
+        products = await apiFetch("/api/products"); // 不需要登录
+        statusText.textContent = `已加载 ${products.length} 件`;
+        renderProducts(products);
+    } catch (err) {
+        statusText.textContent = "商品加载失败";
+        showToast(err.message || "商品加载失败");
+    }
+}
 
-    if(items.length===0){
-        cartList.innerHTML = `<div class="muted small" style="padding:14px 2px;">购物车空空的，去挑点商品吧。</div>`;
+// -------------------- 购物车（全部走后端） --------------------
+function calcTotal(items) {
+    let total = 0;
+    for (const it of items) {
+        const price = it.Stock?.price ?? it.stock?.price ?? 0;
+        total += price * it.quantity;
+    }
+    return total;
+}
+
+function renderCart(items) {
+    const cnt = items.reduce((s, it) => s + (it.quantity || 0), 0);
+    cartCount.textContent = String(cnt);
+
+    if (!items.length) {
+        cartList.innerHTML = `<div class="muted small" style="padding:14px 2px;">购物车空空的。</div>`;
         cartTotal.textContent = money(0);
         return;
     }
 
-    let total = 0;
-    cartList.innerHTML = items.map(({product:p, qty})=>{
-        total += (Number(p.price)||0) * qty;
-        return `
-        <div class="cartItem" data-id="${p.id}">
-          <div class="miniThumb"></div>
-          <div>
-            <p class="ciTitle">${escapeHtml(p.name)}</p>
-            <div class="ciSub">${money(p.price)} · ${escapeHtml(p.category||"—")}</div>
-            <div class="ciSub danger" style="display:${(p.stock!=null && qty>p.stock) ? 'block':'none'}">超出库存</div>
-          </div>
-          <div class="qty">
-            <button data-action="minus">−</button>
-            <span>${qty}</span>
-            <button data-action="plus">＋</button>
-          </div>
+    cartList.innerHTML = items
+        .map((it) => {
+            const stock = it.Stock || it.stock || {};
+            return `
+      <div class="cartItem" data-id="${it.ID || it.id}">
+        <div class="miniThumb"></div>
+        <div>
+          <p class="ciTitle">${escapeHtml(stock.name || "")}</p>
+          <div class="ciSub">${money(stock.price)} · ${escapeHtml(stock.category || "")}</div>
         </div>
-      `;
-    }).join("");
+        <div class="qty">
+          <button data-action="minus">−</button>
+          <span>${it.quantity}</span>
+          <button data-action="plus">＋</button>
+          <button data-action="del" title="删除" style="margin-left:6px;">🗑</button>
+        </div>
+      </div>
+    `;
+        })
+        .join("");
 
-    cartTotal.textContent = money(total);
+    cartTotal.textContent = money(calcTotal(items));
 }
 
-/***********************
- * 过滤/排序
- ***********************/
-function applyFilters(){
-    const keyword = q.value.trim().toLowerCase();
-    const min = minPrice.value === "" ? null : Number(minPrice.value);
-    const max = maxPrice.value === "" ? null : Number(maxPrice.value);
-
-    let list = [...allProducts];
-
-    if(activeCategory !== "全部"){
-        list = list.filter(p => (p.category||"") === activeCategory);
+async function loadCart() {
+    // 未登录：不请求购物车（也可以提示登录）
+    if (!getToken()) {
+        cartItems = [];
+        renderCart(cartItems);
+        return;
     }
-    if(keyword){
-        list = list.filter(p=>{
-            const hay = `${p.name||""} ${p.sku||""} ${p.category||""} ${p.desc||""}`.toLowerCase();
-            return hay.includes(keyword);
-        });
+    try {
+        const data = await apiFetch("/api/cart");
+        cartItems = Array.isArray(data) ? data : [];
+        renderCart(cartItems);
+    } catch (err) {
+        showToast(err.message || "购物车加载失败");
     }
-    if(min != null && !Number.isNaN(min)) list = list.filter(p => Number(p.price) >= min);
-    if(max != null && !Number.isNaN(max)) list = list.filter(p => Number(p.price) <= max);
-
-    const s = sort.value;
-    if(s === "price_asc") list.sort((a,b)=>Number(a.price)-Number(b.price));
-    if(s === "price_desc") list.sort((a,b)=>Number(b.price)-Number(a.price));
-    if(s === "newest") list.sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0));
-
-    filtered = list;
-    renderGrid(filtered);
 }
 
-/***********************
- * 购物车逻辑
- ***********************/
-function addToCart(p, n=1){
-    const cur = cart.get(p.id);
-    const nextQty = (cur?.qty || 0) + n;
-    cart.set(p.id, {product:p, qty: Math.max(1, nextQty)});
-    renderCart();
+async function addToCart(stockID, qty = 1) {
+    if (!getToken()) {
+        showToast("请先登录");
+        location.href = "/login";
+        return;
+    }
+    await apiFetch("/api/cart", {
+        method: "POST",
+        body: JSON.stringify({ stock_id: stockID, quantity: qty }),
+    });
     showToast("已加入购物车");
-}
-function changeQty(id, delta){
-    const it = cart.get(id);
-    if(!it) return;
-    const q = it.qty + delta;
-    if(q <= 0){ cart.delete(id); }
-    else { it.qty = q; cart.set(id, it); }
-    renderCart();
-}
-function clearCart(){
-    cart.clear();
-    renderCart();
-    showToast("已清空购物车");
+    await loadCart();
 }
 
-/***********************
- * 后端对接：拉取商品
- ***********************/
-async function fetchProducts(){
-    statusText.textContent = "加载中…";
-    try{
-        const url = (API_BASE || "") + ENDPOINT_PRODUCTS;
-        const res = await fetch(url, { headers: { "Accept":"application/json" } });
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if(!Array.isArray(data)) throw new Error("返回值不是数组");
-        // 轻度容错：字段名不一致时自己映射
-        allProducts = data.map(x=>({
-            id: x.id ?? x.ID ?? x.product_id,
-            name: x.name ?? x.title,
-            price: x.price ?? x.sale_price ?? 0,
-            category: x.category ?? x.cat ?? "未分类",
-            sku: x.sku ?? x.SKU ?? "",
-            stock: x.stock ?? x.inventory ?? null,
-            desc: x.desc ?? x.description ?? "",
-            createdAt: x.createdAt ?? x.created_at ?? x.create_time ?? ""
-        })).filter(p=>p.id!=null);
+// 修改数量：PUT /api/cart/:id  { quantity }
+async function updateCartQty(cartID, quantity) {
+    await apiFetch(`/api/cart/${cartID}`, {
+        method: "PUT",
+        body: JSON.stringify({ quantity }),
+    });
+    await loadCart();
+}
 
-        statusText.textContent = `已加载 ${allProducts.length} 件`;
-        renderCategories();
-        applyFilters();
-        showToast("已从接口加载商品");
-    }catch(e){
-        console.warn(e);
-        statusText.textContent = "接口不可用（已保留 Mock）";
-        showToast("拉取失败：请确认 /api/products");
+// 删除：DELETE /api/cart/:id
+async function deleteCartItem(cartID) {
+    await apiFetch(`/api/cart/${cartID}`, { method: "DELETE" });
+    await loadCart();
+}
+
+// 清空：把每项删掉（你后端也可以做一个 /api/cart/clear 更快）
+async function clearCart() {
+    for (const it of cartItems) {
+        await deleteCartItem(it.ID || it.id);
     }
+    showToast("已清空");
 }
 
-/***********************
- * 事件绑定
- ***********************/
-// 分类 chips
-catChips.addEventListener("click", (e)=>{
-    const btn = e.target.closest("button[data-cat]");
-    if(!btn) return;
-    activeCategory = btn.dataset.cat;
-    renderCategories();
-    applyFilters();
-});
+// 结算：POST /api/orders
+async function checkout() {
+    if (!getToken()) {
+        showToast("请先登录");
+        location.href = "/login";
+        return;
+    }
+    if (!cartItems.length) return showToast("购物车为空");
 
-// 商品卡片事件（详情/加入）
-grid.addEventListener("click", (e)=>{
+    await apiFetch("/api/orders", { method: "POST" });
+    showToast("下单成功（pending）");
+    await loadCart();
+    hideCart();
+}
+
+// -------------------- 事件绑定 --------------------
+grid.addEventListener("click", async (e) => {
     const card = e.target.closest(".card");
-    if(!card) return;
+    if (!card) return;
+    const act = e.target.closest("button")?.dataset?.action;
+    if (act !== "add") return;
+
     const id = Number(card.dataset.id);
-    const p = allProducts.find(x=>Number(x.id)===id);
-    if(!p) return;
-
-    const act = e.target.closest("button")?.dataset?.action;
-    if(act === "detail") openModal(p);
-    if(act === "add") addToCart(p, 1);
+    await addToCart(id, 1);
 });
 
-// 搜索实时
-q.addEventListener("input", ()=>{
-    applyFilters();
-});
-
-$("#applyBtn").addEventListener("click", applyFilters);
-$("#resetBtn").addEventListener("click", ()=>{
-    activeCategory = "全部";
-    q.value = "";
-    minPrice.value = "";
-    maxPrice.value = "";
-    sort.value = "reco";
-    renderCategories();
-    applyFilters();
-});
-
-// cart open/close
-cartBtn.addEventListener("click", openCart);
-$("#closeCart").addEventListener("click", closeCart);
-overlay.addEventListener("click", ()=>{
-    closeCart();
-    closeModal();
-});
-
-// cart qty
-cartList.addEventListener("click", (e)=>{
-    const item = e.target.closest(".cartItem");
-    if(!item) return;
-    const id = Number(item.dataset.id);
-    const act = e.target.closest("button")?.dataset?.action;
-    if(act === "minus") changeQty(id, -1);
-    if(act === "plus") changeQty(id, +1);
-});
-
-$("#clearCart").addEventListener("click", clearCart);
-$("#checkoutBtn").addEventListener("click", ()=>{
-    const total = cartTotal.textContent;
-    if(cart.size===0) return showToast("购物车为空");
-    // 这里只做UI演示：接后端时改成创建订单接口
-    showToast(`已生成结算（演示） · ${total}`);
-});
-
-// modal
-$("#closeModal").addEventListener("click", closeModal);
-modalWrap.addEventListener("click", (e)=>{
-    if(e.target === modalWrap) closeModal();
-});
-modalAdd.addEventListener("click", ()=>{
-    if(!currentModalProduct) return;
-    addToCart(currentModalProduct, 1);
-});
-modalBuy.addEventListener("click", ()=>{
-    if(!currentModalProduct) return;
-    addToCart(currentModalProduct, 1);
-    closeModal();
+cartBtn.addEventListener("click", async () => {
+    await loadCart();
     openCart();
 });
+closeCart.addEventListener("click", hideCart);
+overlay.addEventListener("click", hideCart);
 
-// hero buttons
-$("#mockBtn").addEventListener("click", ()=>{
-    allProducts = [...MOCK_PRODUCTS];
-    statusText.textContent = `使用 Mock（${allProducts.length} 件）`;
-    renderCategories();
-    applyFilters();
-    showToast("已切换为 Mock 数据");
+cartList.addEventListener("click", async (e) => {
+    const item = e.target.closest(".cartItem");
+    if (!item) return;
+    const cartID = Number(item.dataset.id);
+    const act = e.target.closest("button")?.dataset?.action;
+    const cur = cartItems.find((x) => Number(x.ID || x.id) === cartID);
+    if (!cur) return;
+
+    if (act === "minus") {
+        const next = cur.quantity - 1;
+        if (next <= 0) await deleteCartItem(cartID);
+        else await updateCartQty(cartID, next);
+    }
+    if (act === "plus") {
+        await updateCartQty(cartID, cur.quantity + 1);
+    }
+    if (act === "del") {
+        await deleteCartItem(cartID);
+    }
 });
-$("#apiBtn").addEventListener("click", fetchProducts);
 
-// top actions demo
-$("#loginBtn").addEventListener("click", ()=>showToast("登录 UI（待接后端）"));
-$("#homeBtn").addEventListener("click", (e)=>{
-    e.preventDefault();
-    window.scrollTo({top:0, behavior:"smooth"});
+checkoutBtn.addEventListener("click", async () => {
+    try {
+        await checkout();
+    } catch (err) {
+        showToast(err.message || "结算失败");
+    }
+});
+clearCartBtn.addEventListener("click", async () => {
+    try {
+        await clearCart();
+    } catch (err) {
+        showToast(err.message || "清空失败");
+    }
 });
 
-// init
-function escapeHtml(str){
-    return String(str ?? "").replace(/[&<>"']/g, s => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+function escapeHtml(str) {
+    return String(str ?? "").replace(/[&<>"']/g, (s) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
     }[s]));
 }
-renderCategories();
-applyFilters();
-renderCart();
 
-// 键盘 ESC 关闭
-document.addEventListener("keydown", (e)=>{
-    if(e.key === "Escape"){ closeCart(); closeModal(); }
-});
+// init
+(async function init() {
+    await refreshAuthUI();
+    await loadProducts();
+    await loadCart(); // 更新右上角数量
+})();
